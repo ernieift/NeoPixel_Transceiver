@@ -22,7 +22,7 @@
  * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 
-/* pinout used on ATtiny45
+/* pinout used on ATtiny45/85
  * pin 1 -
  * pin 2 RX comes from host
  * pin 3 TX (not used at yet)
