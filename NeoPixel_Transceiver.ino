@@ -1,5 +1,5 @@
 /**
- ******************************************************************************
+ *****************************************************************************
  * @file       NeoPixel_Transceiver.ino
  * @author     ernieift, Copyright (C) 2014
  * @brief      protocol converter to use rgb led stripes at async serial ports
@@ -42,6 +42,7 @@
 /* Serial definition */
 #define RXPIN 3
 #define TXPIN 4
+#define BAUDRATE 9600
 SoftwareSerial softSerial(RXPIN, TXPIN);
 
 /* LED definition */
@@ -59,7 +60,7 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(LEDMAX, LEDPIN, NEO_GRB + NEO_KHZ800
 void setup() {
   strip.begin();
   strip.show(); // Initialize all pixels to 'off'
-  softSerial.begin(9600);
+  softSerial.begin(BAUDRATE);
 }
 
 void loop() {
@@ -121,15 +122,20 @@ void loop() {
       delay(1);
       newState = STATE_IDLE;
     }
+    else {
+      newState = STATE_IDLE;
+    }
     
     if (newState != oldState) {
       timeout = 0;
     }
     else {
-      delay(1);
-      timeout++;
       if (timeout >= TIMEMAX) {
         newState = STATE_SEND;
+      }
+      else {
+        delay(1);
+        timeout++;
       }
     }
 
