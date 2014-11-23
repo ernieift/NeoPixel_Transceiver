@@ -22,7 +22,7 @@
  * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 
-/* pinout used on ATtiny45/85
+/* pinout used on ATtiny85
  * pin 1 -
  * pin 2 RX comes from host
  * pin 3 TX (not used at yet)
@@ -74,72 +74,61 @@ void loop() {
 
   uint8_t oldState, newState;
   uint8_t timeout;
-
-  struct {
-    uint16_t n;
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-  } led;
+  uint16_t n;
+  uint8_t r,g,b;
 
   oldState = STATE_IDLE;
   newState = STATE_IDLE;
   timeout = 0;
 
   while (1) {
-    if (oldState == STATE_IDLE) {
-      if (softSerial.available()) {
-        led.n = 0;
-        newState = STATE_RECEIVE_R;
-      }
-      timeout = 0;
-    }
-    else if (oldState == STATE_RECEIVE_R) {
-      if (softSerial.available()) {
-        led.r = softSerial.read();
-        newState = STATE_RECEIVE_G;
-      }
-    }
-    else if (oldState == STATE_RECEIVE_G) {
-      if (softSerial.available()) {
-        led.g = softSerial.read();
-        newState = STATE_RECEIVE_B;
-      }
-    }
-    else if (oldState == STATE_RECEIVE_B) {
-      if (softSerial.available()) {
-        led.b = softSerial.read();
-        strip.setPixelColor(led.n, led.r, led.g, led.b);
-        led.n++;
-        if (led.n < LEDMAX)
+    switch (oldState) {
+      case STATE_IDLE:
+        if (softSerial.available()) {
+          n = 0;
           newState = STATE_RECEIVE_R;
-        else
-          newState = STATE_SEND;
-      }
+        }
+        break;
+      case STATE_RECEIVE_R:
+        if (softSerial.available()) {
+          r = softSerial.read();
+          newState = STATE_RECEIVE_G;
+        }
+        break;
+      case STATE_RECEIVE_G:
+        if (softSerial.available()) {
+          g = softSerial.read();
+          newState = STATE_RECEIVE_B;
+        }
+        break;
+      case STATE_RECEIVE_B:
+        if (softSerial.available()) {
+          b = softSerial.read();
+          strip.setPixelColor(n, r, g, b);
+          newState = (++n < LEDMAX) ? STATE_RECEIVE_R : STATE_SEND;
+        }
+        break;
+      case STATE_SEND:
+        strip.show();
+        delay(1);
+        newState = STATE_IDLE;
+        break;
+      default:
+        newState = STATE_IDLE;
     }
-    else if (oldState == STATE_SEND) {
-      strip.show();
-      delay(1);
-      newState = STATE_IDLE;
-    }
-    else {
-      newState = STATE_IDLE;
-    }
-    
-    if (newState != oldState) {
+
+    if ((newState != oldState) || (oldState == STATE_IDLE)) {
       timeout = 0;
     }
+    else if (timeout >= TIMEMAX) {
+      newState = STATE_SEND;
+    }
     else {
-      if (timeout >= TIMEMAX) {
-        newState = STATE_SEND;
-      }
-      else {
-        delay(1);
-        timeout++;
-      }
+      delay(1);
+      timeout++;
     }
 
     oldState = newState;
   }
 }
-      
+
