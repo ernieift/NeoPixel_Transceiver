@@ -46,15 +46,19 @@
 SoftwareSerial softSerial(RXPIN, TXPIN);
 
 /* LED definition */
+#define LEDPIN 0
+// LEDMAX is limited by the amount of RAM
+// With the inclusion of SoftSerial, LEDMAX can't exceed:
+//   ATtiny85: 72
+//   ATtiny45: (to be filled)
+#define LEDMAX 8
 // Parameter 1 = number of pixels in strip
 // Parameter 2 = Arduino pin number (most are valid)
 // Parameter 3 = pixel type flags, add together as needed:
 //   NEO_KHZ800  800 KHz bitstream (most NeoPixel products w/WS2812 LEDs)
 //   NEO_KHZ400  400 KHz (classic 'v1' (not v2) FLORA pixels, WS2811 drivers)
 //   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
-//   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
-#define LEDPIN 0
-#define LEDMAX 100
+//   NEO_RGB     Pixels #define LEDPIN 0
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(LEDMAX, LEDPIN, NEO_GRB + NEO_KHZ800);
 
 void setup() {
