@@ -1,8 +1,9 @@
 /**
  *****************************************************************************
  * @file       NeoPixel_Transceiver.ino
- * @author     ernieift, Copyright (C) 2014
+ * @author     ernieift, Copyright (C) 2014/2015
  * @brief      protocol converter to use rgb led stripes at async serial ports
+ * @brief      and/or as i2c slave
  * @see        The GNU Public License (GPL) Version 3
  *
  *****************************************************************************/
@@ -22,28 +23,42 @@
  * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 
-/* pinout used on ATtiny85
- * pin 1 -
- * pin 2 RX comes from host
- * pin 3 TX (not used at yet)
- * pin 4 GND
- * pin 5 DOUT goes to LED stripe
- * pin 6 -
- * pin 7 -
- * pin 8 VCC
+/*
+ * pins on ATtiny85
+ *              ------ 
+ *  RESET  PB5 |1 \/ 8| VCC
+ *         PB3 |2    7| PB2 SCL
+ *         PB4 |3    6| PB1
+ *         GND |4    5| PB0 SDA
+ *              ------
+ *
+ * default wiring for softserial
+ * RX <- PB3
+ * TX -> PB4
+ * 
+ * default LED output
+ * LED -> PB1
+ *
  */
 
-#include <SoftwareSerial.h>
-#include <Adafruit_NeoPixel.h>
-
-/* global definition */
-#define TIMEMAX 3
+/**
+ * main defines
+ * used for pinout and communication protocol
+ *
+ * note: in i2c mode reads and writes goes directly to LED buffer
+ * pay attantion to the byte order here
+ */
 
 /* Serial definition */
+//#define COM_SERIAL
 #define RXPIN 3
 #define TXPIN 4
 #define BAUDRATE 9600
-SoftwareSerial softSerial(RXPIN, TXPIN);
+#define TIMEMAX 3
+
+/* I2C definition */
+#define COM_I2C
+#define I2C_SLAVE_ADDRESS 0x50 // the 7-bit address (use the same as 24LC01)
 
 /* LED definition */
 // Parameter 1 = number of pixels in strip
@@ -53,17 +68,93 @@ SoftwareSerial softSerial(RXPIN, TXPIN);
 //   NEO_KHZ400  400 KHz (classic 'v1' (not v2) FLORA pixels, WS2811 drivers)
 //   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
 //   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
-#define LEDPIN 0
-#define LEDMAX 100
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(LEDMAX, LEDPIN, NEO_GRB + NEO_KHZ800);
+#define NUMLED 64 /* tested @ATTiny85 and i2c. for faster updates reduce this */
+#define LEDPIN 1
+#include <Adafruit_NeoPixel.h>
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLED, LEDPIN, NEO_GRB + NEO_KHZ800);
+
+#if defined(COM_SERIAL) && defined(COM_I2C)
+#error "can't use serial and i2c communication at the same time"
+#undef COM_SERIAL
+#undef COM_I2C
+#endif
+
+#ifdef COM_SERIAL
+#include <SoftwareSerial.h>
+SoftwareSerial softSerial(RXPIN, TXPIN);
+#endif
+
+#ifdef COM_I2C
+#include <TinyWireS.h>
+#ifndef TWI_RX_BUFFER_SIZE
+#define TWI_RX_BUFFER_SIZE ( 16 )
+#endif
+
+static volatile uint8_t *i2c_regs;
+static volatile uint8_t i2c_size;
+static volatile uint8_t i2c_pos;
+
+void i2c_requestEvent()
+{
+  if (i2c_pos < i2c_size) {
+    TinyWireS.send(i2c_regs[i2c_pos]);
+  } else {
+    TinyWireS.send(0);
+  }
+  i2c_pos++;
+}
+
+void i2c_receiveEvent(uint8_t amount)
+{
+  // set register address
+  if ((amount > 0) && (amount < TWI_RX_BUFFER_SIZE)) {
+    i2c_pos = TinyWireS.receive();
+    amount--;
+  } else {
+    return;
+  }
+
+  // isn't there anymore?
+  if (amount == 0) {
+    return;
+  }
+  
+  while(amount--) {
+    if ((i2c_regs != NULL) && (i2c_pos < i2c_size)) {
+      i2c_regs[i2c_pos] = TinyWireS.receive();
+    } else {
+      TinyWireS.receive();
+    }
+    i2c_pos++;
+  }
+  strip.show();
+}
+#endif
 
 void setup() {
+  // initialize leds
   strip.begin();
   strip.show(); // Initialize all pixels to 'off'
+
+#ifdef COM_SERIAL
+  // initialize serial communication
   softSerial.begin(BAUDRATE);
+#endif
+
+#ifdef COM_I2C
+  // initialize i2c communication
+  TinyWireS.begin(I2C_SLAVE_ADDRESS);
+  TinyWireS.onReceive(i2c_receiveEvent);
+  TinyWireS.onRequest(i2c_requestEvent);
+ i2c_regs = strip.getPixels();
+ i2c_size = strip.numPixels() * 3;
+ i2c_pos = 0;
+#endif
 }
 
 void loop() {
+#ifdef COM_SERIAL
+  // handle serial communication
   enum machinestates {
     STATE_IDLE=0,
     STATE_RECEIVE_R=1,
@@ -105,12 +196,11 @@ void loop() {
         if (softSerial.available()) {
           b = softSerial.read();
           strip.setPixelColor(n, r, g, b);
-          newState = (++n < LEDMAX) ? STATE_RECEIVE_R : STATE_SEND;
+          newState = (++n < NUMLED) ? STATE_RECEIVE_R : STATE_SEND;
         }
         break;
       case STATE_SEND:
         strip.show();
-        delay(1);
         newState = STATE_IDLE;
         break;
       default:
@@ -130,5 +220,13 @@ void loop() {
 
     oldState = newState;
   }
+#endif
+
+#ifdef COM_I2C
+  // handle i2c communication.
+  while (1) {
+    TinyWireS_stop_check();
+  }
+#endif
 }
 
